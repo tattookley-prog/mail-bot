@@ -6,6 +6,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.keys import Keys
 
 def create_driver():
     options = Options()
@@ -39,8 +40,7 @@ def search_yopmail(inbox, keywords):
         login_field.clear()
         login_field.send_keys(inbox)
 
-        btn = driver.find_element(By.CSS_SELECTOR, "button.md")
-        btn.click()
+        login_field.send_keys(Keys.RETURN)
 
         print(f"  Загружаем inbox...")
         WebDriverWait(driver, 15).until(EC.frame_to_be_available_and_switch_to_it("ifinbox"))
@@ -66,7 +66,7 @@ def search_yopmail(inbox, keywords):
                 mail_id = em.get_attribute("id")
                 if any(kw.lower() in text.lower() for kw in keywords):
                     found += 1
-                    link = f"https://yopmail.com/en/mail?b={inbox}&id={mail_id}" if mail_id else ""
+                    link = f"https://yopmail.com/?b={inbox}&id={mail_id}&lang=en" if mail_id else ""
                     results.append((found, text, link))
 
             # Try to go to the next page
