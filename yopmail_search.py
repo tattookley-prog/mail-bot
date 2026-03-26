@@ -23,6 +23,32 @@ def create_driver():
     driver.set_page_load_timeout(60)
     return driver
 
+def find_next_button(driver):
+    """ Ищет кнопку 'следующая страница' по всем известным селекторам yopmail.
+    Возвращает элемент если найден и активен, иначе None.
+    """
+    selectors = [
+        (By.ID, "napb"),       # <input id="napb" value="Next" onclick="mnext()">
+        (By.ID, "pagnxt"),     # старый вариант
+        (By.CSS_SELECTOR, "input[onclick='mnext()']"),
+        (By.CSS_SELECTOR, "input[value='Next']"),
+        (By.CSS_SELECTOR, "a[onclick*='next']"),
+        (By.XPATH, "//input[@value='Next' or @value='next' or @id='napb']"),
+        (By.XPATH, "//a[contains(@onclick,'next') or contains(@title,'Next')]")
+    ]
+    for by, selector in selectors:
+        try:
+            elements = driver.find_elements(by, selector)
+            for el in elements:
+                if el.is_displayed() and el.is_enabled():
+                    classes = el.get_attribute("class") or ""
+                    if "pagination-off" in classes or "disabled" in classes:
+                        continue
+                    return el
+        except Exception:
+            continue
+    return None
+
 def search_yopmail(inbox, keywords):
     print(f"\n  Запускаем браузер...")
     driver = create_driver()
@@ -69,13 +95,12 @@ def search_yopmail(inbox, keywords):
 
             total_emails += count
 
-            # Правильный селектор кнопки "Next" на yopmail.com: id="napb"
-            next_btns = driver.find_elements(By.ID, "napb")
-            if not next_btns:
+            next_btn = find_next_button(driver)
+            if next_btn is None:
+                print(f"  Следующей страницы нет, завершаем на странице {page}.")
                 break
-            next_btn = next_btns[0]
-            if not next_btn.is_enabled() or not next_btn.is_displayed():
-                break
+
+            print(f"  Переходим на страницу {page + 1}...")
             next_btn.click()
             WebDriverWait(driver, 10).until(
                 lambda d: d.find_elements(By.CSS_SELECTOR, "div.m") or
