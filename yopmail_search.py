@@ -23,32 +23,6 @@ def create_driver():
     driver.set_page_load_timeout(60)
     return driver
 
-def find_next_button(driver):
-    """ Ищет кнопку 'следующая страница' по всем известным селекторам yopmail.
-    Возвращает элемент если найден и активен, иначе None.
-    """
-    selectors = [
-        (By.ID, "napb"),       # <input id="napb" value="Next" onclick="mnext()">
-        (By.ID, "pagnxt"),     # старый вариант
-        (By.CSS_SELECTOR, "input[onclick='mnext()']"),
-        (By.CSS_SELECTOR, "input[value='Next']"),
-        (By.CSS_SELECTOR, "a[onclick*='next']"),
-        (By.XPATH, "//input[@value='Next' or @value='next' or @id='napb']"),
-        (By.XPATH, "//a[contains(@onclick,'next') or contains(@title,'Next')]")
-    ]
-    for by, selector in selectors:
-        try:
-            elements = driver.find_elements(by, selector)
-            for el in elements:
-                if el.is_displayed() and el.is_enabled():
-                    classes = el.get_attribute("class") or ""
-                    if "pagination-off" in classes or "disabled" in classes:
-                        continue
-                    return el
-        except Exception:
-            continue
-    return None
-
 def search_yopmail(inbox, keywords):
     print(f"\n  Запускаем браузер...")
     driver = create_driver()
@@ -95,20 +69,71 @@ def search_yopmail(inbox, keywords):
 
             total_emails += count
 
-            next_btn = find_next_button(driver)
+            # Кнопка napb находится на основной странице, вне фрейма ifinbox
+            driver.switch_to.default_content()
+
+            # Ищем кнопку во всех возможных местах
+            next_btn = None
+            selectors = [
+                (By.ID, "napb"),
+                (By.ID, "pagnxt"),
+                (By.CSS_SELECTOR, "input[onclick='mnext()']"),
+                (By.CSS_SELECTOR, "input[value='Next']"),
+                (By.XPATH, "//input[@value='Next' or @id='napb']"),
+            ]
+            for by, sel in selectors:
+                try:
+                    elements = driver.find_elements(by, sel)
+                    for el in elements:
+                        if el.is_displayed() and el.is_enabled():
+                            classes = el.get_attribute("class") or ""
+                            if "pagination-off" in classes or "disabled" in classes:
+                                continue
+                            next_btn = el
+                            break
+                    if next_btn:
+                        break
+                except Exception:
+                    continue
+
+            if next_btn is None:
+                # Попробуем также внут��и фрейма
+                try:
+                    driver.switch_to.frame("ifinbox")
+                    for by, sel in selectors:
+                        try:
+                            elements = driver.find_elements(by, sel)
+                            for el in elements:
+                                if el.is_displayed() and el.is_enabled():
+                                    classes = el.get_attribute("class") or ""
+                                    if "pagination-off" in classes or "disabled" in classes:
+                                        continue
+                                    next_btn = el
+                                    break
+                            if next_btn:
+                                break
+                        except Exception:
+                            continue
+                except Exception:
+                    pass
+
             if next_btn is None:
                 print(f"  Следующей страницы нет, завершаем на странице {page}.")
                 break
 
             print(f"  Переходим на страницу {page + 1}...")
             next_btn.click()
+
+            # Переключаемся обратно во фрейм и ждём загрузки
+            driver.switch_to.default_content()
+            WebDriverWait(driver, 15).until(EC.frame_to_be_available_and_switch_to_it("ifinbox"))
             WebDriverWait(driver, 10).until(
                 lambda d: d.find_elements(By.CSS_SELECTOR, "div.m") or
                           d.find_elements(By.CSS_SELECTOR, "div.ellipsis")
             )
 
         print(f"  Всего просмотрено: {total_emails} писем на {page} страницах")
-        print("=" * 50)
+        print("")
 
         if not results:
             print(f"\n  Писем с ключевыми словами {keywords} не найдено.")
