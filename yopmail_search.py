@@ -40,7 +40,7 @@ def search_yopmail(inbox, keywords):
         login_field.clear()
         login_field.send_keys(inbox)
 
-        login_field.send_keys(Keys.RETURN)
+        driver.find_element(By.ID, "refreshbut").click()
 
         print(f"  Загружаем inbox...")
         WebDriverWait(driver, 15).until(EC.frame_to_be_available_and_switch_to_it("ifinbox"))
@@ -52,46 +52,39 @@ def search_yopmail(inbox, keywords):
         found = 0
         page = 0
         total_emails = 0
+        global_position = 0
         results = []
 
         while True:
             page += 1
             emails = driver.find_elements(By.CSS_SELECTOR, "div.m")
             count = len(emails)
-            total_emails += count
             print(f"  Страница {page}: писем {count}")
 
-            for em in emails:
+            for pos_on_page, em in enumerate(emails, 1):
+                global_position += 1
                 text = em.text
                 mail_id = em.get_attribute("id")
                 if any(kw.lower() in text.lower() for kw in keywords):
                     found += 1
                     link = f"https://yopmail.com/?b={inbox}&id={mail_id}&lang=en" if mail_id else ""
-                    results.append((found, text, link))
+                    results.append((found, text, link, page, pos_on_page, global_position))
 
-            # Try to go to the next page
-            try:
-                driver.switch_to.default_content()
-                WebDriverWait(driver, 5).until(
-                    EC.frame_to_be_available_and_switch_to_it("ifinbox")
-                )
-                next_btns = driver.find_elements(
-                    By.CSS_SELECTOR,
-                    "button#next, button[class*='next'], a[title*='next'], a[title*='Next']"
-                )
-                if not next_btns:
-                    break
-                next_btn = next_btns[0]
-                if not next_btn.is_enabled() or next_btn.get_attribute("disabled"):
-                    break
-                next_btn.click()
-                WebDriverWait(driver, 10).until(
-                    lambda d: d.find_elements(By.CSS_SELECTOR, "div.m") or
-                              d.find_elements(By.CSS_SELECTOR, "div.ellipsis")
-                )
-            except Exception as page_err:
-                print(f"  Пагинация завершена: {page_err}")
+            total_emails += count
+
+            # Пагинация — кнопка #pagnxt внутри фрейма ifinbox
+            next_btns = driver.find_elements(By.ID, "pagnxt")
+            if not next_btns:
                 break
+            next_btn = next_btns[0]
+            classes = next_btn.get_attribute("class") or ""
+            if "pagination-off" in classes:
+                break
+            next_btn.click()
+            WebDriverWait(driver, 10).until(
+                lambda d: d.find_elements(By.CSS_SELECTOR, "div.m") or
+                          d.find_elements(By.CSS_SELECTOR, "div.ellipsis")
+            )
 
         print(f"  Всего просмотрено: {total_emails} писем на {page} страницах")
         print("=" * 50)
@@ -99,8 +92,9 @@ def search_yopmail(inbox, keywords):
         if not results:
             print(f"\n  Писем с ключевыми словами {keywords} не найдено.")
         else:
-            for num, text, link in results:
-                print(f"\n  Письмо #{num}")
+            for num, text, link, pg, pos, glob in results:
+                print(f"\n  Письмо #{num} (найдено)")
+                print(f"  Местонахождение: вкладка {pg}, позиция {pos} на странице (письмо №{glob} в общем списке)")
                 print(f"  {text[:200]}")
                 if link:
                     print(f"  Ссылка: {link}")
