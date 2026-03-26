@@ -4,6 +4,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException
 
 def create_driver():
     options = Options()
@@ -57,7 +58,8 @@ def search_yopmail(inbox, keywords):
             emails = driver.find_elements(By.CSS_SELECTOR, "div.m")
             count = len(emails)
             print(f"  Страница {page}: писем {count}")
-
+            first_email_snapshot = emails[0].text if emails else ""
+            
             for pos_on_page, em in enumerate(emails, 1):
                 global_position += 1
                 text = em.text
@@ -77,9 +79,13 @@ def search_yopmail(inbox, keywords):
             selectors = [
                 (By.ID, "napb"),
                 (By.ID, "pagnxt"),
+                (By.ID, "nb"),
                 (By.CSS_SELECTOR, "input[onclick='mnext()']"),
+                (By.CSS_SELECTOR, "button[onclick='mnext()']"),
+                (By.CSS_SELECTOR, "[onclick*='mnext']"),
                 (By.CSS_SELECTOR, "input[value='Next']"),
-                (By.XPATH, "//input[@value='Next' or @id='napb']"),
+                (By.XPATH, "//input[@value='Next' or @id='napb' or @id='nb']"),
+                (By.XPATH, "//button[contains(., 'Next') or contains(., 'Далее')]"),
             ]
             for by, sel in selectors:
                 try:
@@ -118,19 +124,34 @@ def search_yopmail(inbox, keywords):
                     pass
 
             if next_btn is None:
-                print(f"  Следующей страницы нет, завершаем на странице {page}.")
-                break
-
-            print(f"  Переходим на страницу {page + 1}...")
-            next_btn.click()
+                try:
+                    moved = driver.execute_script(
+                        "if (typeof mnext === 'function') { mnext(); return true; } return false;"
+                    )
+                    if not moved:
+                        print(f"  Следующей страницы нет, завершаем на странице {page}.")
+                        break
+                    print(f"  Кнопка не найдена, вызвали mnext() через JS...")
+                except Exception:
+                    print(f"  Следующей страницы нет, завершаем на странице {page}.")
+                    break
+            else:
+                print(f"  Переходим на страницу {page + 1}...")
+                next_btn.click()
 
             # Переключаемся обратно во фрейм и ждём загрузки
             driver.switch_to.default_content()
             WebDriverWait(driver, 15).until(EC.frame_to_be_available_and_switch_to_it("ifinbox"))
-            WebDriverWait(driver, 10).until(
-                lambda d: d.find_elements(By.CSS_SELECTOR, "div.m") or
-                          d.find_elements(By.CSS_SELECTOR, "div.ellipsis")
-            )
+            try:
+                WebDriverWait(driver, 10).until(
+                    lambda d: (
+                        (d.find_elements(By.CSS_SELECTOR, "div.m") and d.find_elements(By.CSS_SELECTOR, "div.m")[0].text != first_email_snapshot)
+                        or d.find_elements(By.CSS_SELECTOR, "div.ellipsis")
+                    )
+                )
+            except TimeoutException:
+                print("  Пагинация не изменила содержимое (возможно, это последняя страница), завершаем.")
+                break
 
         print(f"  Всего просмотрено: {total_emails} писем на {page} страницах")
         print("")
