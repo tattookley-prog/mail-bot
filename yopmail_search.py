@@ -1,12 +1,9 @@
 import sys
-import time
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.keys import Keys
 
 def create_driver():
     options = Options()
@@ -72,13 +69,12 @@ def search_yopmail(inbox, keywords):
 
             total_emails += count
 
-            # Пагинация — кнопка #pagnxt внутри фрейма ifinbox
-            next_btns = driver.find_elements(By.ID, "pagnxt")
+            # Правильный селектор кнопки "Next" на yopmail.com: id="napb"
+            next_btns = driver.find_elements(By.ID, "napb")
             if not next_btns:
                 break
             next_btn = next_btns[0]
-            classes = next_btn.get_attribute("class") or ""
-            if "pagination-off" in classes:
+            if not next_btn.is_enabled() or not next_btn.is_displayed():
                 break
             next_btn.click()
             WebDriverWait(driver, 10).until(
