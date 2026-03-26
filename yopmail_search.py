@@ -4,6 +4,8 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 def create_driver():
     options = Options()
@@ -30,7 +32,7 @@ def search_yopmail(inbox, keywords):
     try:
         print(f"  Открываем YOPmail...")
         driver.get("https://yopmail.com/")
-        time.sleep(3)
+        WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.ID, "login")))
 
         print(f"  Вводим логин: {inbox}")
         login_field = driver.find_element(By.ID, "login")
@@ -39,33 +41,70 @@ def search_yopmail(inbox, keywords):
 
         btn = driver.find_element(By.CSS_SELECTOR, "button.md")
         btn.click()
-        time.sleep(3)
 
         print(f"  Загружаем inbox...")
-        driver.switch_to.frame("ifinbox")
-        time.sleep(2)
+        WebDriverWait(driver, 15).until(EC.frame_to_be_available_and_switch_to_it("ifinbox"))
+        WebDriverWait(driver, 15).until(
+            lambda d: d.find_elements(By.CSS_SELECTOR, "div.m") or
+                      d.find_elements(By.CSS_SELECTOR, "div.ellipsis")
+        )
 
-        emails = driver.find_elements(By.CSS_SELECTOR, "div.m")
-        print(f"  Писем найдено: {len(emails)}")
-
-        if not emails:
-            print("  Ящик пуст.")
-            return
-
-        print("=" * 50)
         found = 0
+        page = 0
+        total_emails = 0
+        results = []
 
-        for i, em in enumerate(emails, 1):
-            text = em.text
-            if any(kw.lower() in text.lower() for kw in keywords):
-                found += 1
-                print(f"\n  Письмо #{found}")
-                print(f"  {text[:200]}")
-                print("-" * 50)
+        while True:
+            page += 1
+            emails = driver.find_elements(By.CSS_SELECTOR, "div.m")
+            count = len(emails)
+            total_emails += count
+            print(f"  Страница {page}: писем {count}")
 
-        if found == 0:
+            for em in emails:
+                text = em.text
+                mail_id = em.get_attribute("id")
+                if any(kw.lower() in text.lower() for kw in keywords):
+                    found += 1
+                    link = f"https://yopmail.com/en/mail?b={inbox}&id={mail_id}" if mail_id else ""
+                    results.append((found, text, link))
+
+            # Try to go to the next page
+            try:
+                driver.switch_to.default_content()
+                WebDriverWait(driver, 5).until(
+                    EC.frame_to_be_available_and_switch_to_it("ifinbox")
+                )
+                next_btns = driver.find_elements(
+                    By.CSS_SELECTOR,
+                    "button#next, button[class*='next'], a[title*='next'], a[title*='Next']"
+                )
+                if not next_btns:
+                    break
+                next_btn = next_btns[0]
+                if not next_btn.is_enabled() or next_btn.get_attribute("disabled"):
+                    break
+                next_btn.click()
+                WebDriverWait(driver, 10).until(
+                    lambda d: d.find_elements(By.CSS_SELECTOR, "div.m") or
+                              d.find_elements(By.CSS_SELECTOR, "div.ellipsis")
+                )
+            except Exception as page_err:
+                print(f"  Пагинация завершена: {page_err}")
+                break
+
+        print(f"  Всего просмотрено: {total_emails} писем на {page} страницах")
+        print("=" * 50)
+
+        if not results:
             print(f"\n  Писем с ключевыми словами {keywords} не найдено.")
         else:
+            for num, text, link in results:
+                print(f"\n  Письмо #{num}")
+                print(f"  {text[:200]}")
+                if link:
+                    print(f"  Ссылка: {link}")
+                print("-" * 50)
             print(f"\n  Итого найдено: {found}")
 
     except Exception as e:
